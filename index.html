@@ -626,9 +626,10 @@ async function analyzeTicket() {
     editingIndex = null;
     openModal('modal-form');
   } catch(err) {
-    $('add-content').innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center;font-size:13px;">
-      ❌ Erreur d'analyse<br><br>${err.message}<br><br>
-      <button class="save-btn" onclick="location.reload()">Réessayer</button>
+    $('add-content').innerHTML = `<div style="color:var(--danger);padding:20px;font-size:12px;">
+      <div style="text-align:center;margin-bottom:12px">❌ Erreur d'analyse</div>
+      <pre style="background:#111;padding:10px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#ff8888;max-height:200px;overflow-y:auto">${err.message}</pre>
+      <button class="save-btn" style="margin-top:12px" onclick="location.reload()">Réessayer</button>
     </div>`;
     console.error(err);
   }
@@ -652,7 +653,6 @@ Un seul champ non-null. Date du ticket ou ${new Date().toISOString().split('T')[
         { inline_data: { mime_type: 'image/jpeg', data: imageB64 } }
       ]}],
       generationConfig: { temperature: 0, maxOutputTokens: 2048 },
-      thinkingConfig: { thinkingBudget: 0 }
     })
   });
 
