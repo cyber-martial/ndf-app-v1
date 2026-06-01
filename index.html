@@ -636,37 +636,23 @@ async function analyzeTicket() {
 
 // ===== GEMINI API =====
 async function callGemini(imageB64, apiKey) {
-  const prompt = `Tu analyses une photo de ticket de caisse ou de reçu de paiement français.
-Extrait ces informations et réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après :
-{
-  "date": "YYYY-MM-DD",
-  "libelle": "nom du commerce ou description courte",
-  "repas": null ou montant en euros (nombre),
-  "hotel": null ou montant en euros (nombre),
-  "taxis": null ou montant en euros (nombre),
-  "divers": null ou montant en euros (nombre)
-}
-
-Règles de catégorisation :
-- repas: restaurant, café, brasserie, fast-food, déjeuner, dîner, self
-- hotel: hôtel, nuit, hébergement
-- taxis: taxi, VTC, Uber, péage, parking, transport
-- divers: tout le reste (carburant, fournitures, etc.)
-- Un seul champ de montant doit être rempli (le montant total TTC du ticket)
-- Si la date n'est pas lisible, utilise la date d'aujourd'hui : ${new Date().toISOString().split('T')[0]}
-- libelle doit être court (max 40 caractères)`;
+  const prompt = `Analyse cette photo de ticket de caisse français.
+Réponds UNIQUEMENT avec ce JSON, sans aucun texte avant ou après, sans markdown :
+{"date":"YYYY-MM-DD","libelle":"nom court du commerce","repas":null,"hotel":null,"taxis":null,"divers":null}
+Remplace null par le montant TTC (nombre décimal) pour la catégorie correspondante.
+Categories: repas=restaurant/cafe/brasserie, hotel=hébergement, taxis=taxi/VTC/peage/parking, divers=reste.
+Un seul champ non-null. Date du ticket ou ${new Date().toISOString().split('T')[0]} si illisible.`;
 
   const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: 'image/jpeg', data: imageB64 } }
-        ]
-      }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+      contents: [{ parts: [
+        { text: prompt },
+        { inline_data: { mime_type: 'image/jpeg', data: imageB64 } }
+      ]}],
+      generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+      thinkingConfig: { thinkingBudget: 0 }
     })
   });
 
@@ -676,13 +662,22 @@ Règles de catégorisation :
   }
 
   const data = await resp.json();
-  // Gemini 2.5 peut avoir plusieurs parts (thinking + réponse) — on concatène tout
   const parts = data.candidates?.[0]?.content?.parts || [];
-  const text = parts.map(p => p.text || '').join('');
-  // Extraire le bloc JSON même s'il y a du texte autour
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Aucun JSON trouvé : ' + text.substring(0, 200));
-  return JSON.parse(match[0]);
+  // Cherche la part qui contient du JSON (ignore les parts "thinking")
+  let jsonText = '';
+  for (const p of parts) {
+    if (p.text && p.text.includes('"date"')) { jsonText = p.text; break; }
+  }
+  if (!jsonText) jsonText = parts.map(p => p.text || '').join('');
+  
+  // Nettoie et extrait le JSON
+  jsonText = jsonText.replace(/```json|```/g, '').trim();
+  const start = jsonText.indexOf('{');
+  const end = jsonText.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error('JSON: ' + jsonText.substring(0, 500));
+  }
+  return JSON.parse(jsonText.substring(start, end + 1));
 }
 
 // ===== FORM =====
